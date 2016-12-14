@@ -61,7 +61,7 @@ public final class ColumnSelection implements Serializable {
     @Override
     public String toString() {
         if (selectedColumns == null) {
-            return "";
+            return "*";
         }
         return Joiner.on(',').join(Iterables.transform(selectedColumns, PtBytes::encodeBase64String));
     }
