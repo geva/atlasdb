@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import org.junit.After;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +41,11 @@ public class TracingKVSTest extends AbstractKeyValueServiceTest {
     private static final String TEST_OBSERVER_NAME = TracingKVSTest.class.getName();
 
     @Override
+    protected KeyValueService getKeyValueService() {
+        return TracingKeyValueService.create(new InMemoryKeyValueService(false));
+    }
+
+    @Override
     public void setUp() throws Exception {
         Tracer.initTrace(Optional.of(true), getClass().getSimpleName() + "." + Math.random());
         Tracer.subscribe(TEST_OBSERVER_NAME, new TestSpanObserver());
@@ -49,37 +53,36 @@ public class TracingKVSTest extends AbstractKeyValueServiceTest {
         super.setUp();
     }
 
-    @After
-    public void after() {
-        Optional<Span> finishedSpan = Tracer.completeSpan();
-        SpanObserver observer = Tracer.unsubscribe(TEST_OBSERVER_NAME);
-        assertThat(observer).isInstanceOf(TestSpanObserver.class);
-        List<Span> spans = ((TestSpanObserver) observer).spans();
-        log.warn("{} spans: {}", spans.size(), spans.stream().map(Span::getOperation).collect(Collectors.toList()));
-
-        if (Tracer.isTraceObservable()) {
-            assertThat(finishedSpan.isPresent()).isTrue();
-            assertThat(finishedSpan.get().getOperation()).isEqualTo("test");
-            String traceId = finishedSpan.get().getTraceId();
-            assertThat(traceId).isNotNull();
-            assertThat(traceId).isNotEmpty();
-            assertThat(spans).isNotEmpty();
-            assertThat(spans.size())
-                    .describedAs("Should include root test span and additional KVS method spans %s", spans)
-                    .isGreaterThan(1);
-            assertThat(spans.stream()
-                    .filter(span -> !Objects.equals(traceId, span.getTraceId()))
-                    .map(Span::getTraceId)
-                    .collect(Collectors.toSet()))
-                    .describedAs("All spans should have same trace ID %s, spans %s", traceId, spans)
-                    .isEmpty();
+    @Override
+    public void tearDown() throws Exception {
+        try {
+            Optional<Span> finishedSpan = Tracer.completeSpan();
+            SpanObserver observer = Tracer.unsubscribe(TEST_OBSERVER_NAME);
+            assertThat(observer).isInstanceOf(TestSpanObserver.class);
+            List<Span> spans = ((TestSpanObserver) observer).spans();
+            log.warn("{} spans: {}", spans.size(), spans.stream().map(Span::getOperation).collect(Collectors.toList()));
+            if (Tracer.isTraceObservable()) {
+                assertThat(finishedSpan.isPresent()).isTrue();
+                assertThat(finishedSpan.get().getOperation()).isEqualTo("test");
+                String traceId = finishedSpan.get().getTraceId();
+                assertThat(traceId).isNotNull();
+                assertThat(traceId).isNotEmpty();
+                assertThat(spans).isNotEmpty();
+                assertThat(spans.size())
+                        .describedAs("Should include root test span and additional KVS method spans %s", spans)
+                        .isGreaterThanOrEqualTo(1);
+                assertThat(spans.stream()
+                        .filter(span -> !Objects.equals(traceId, span.getTraceId()))
+                        .map(Span::getTraceId)
+                        .collect(Collectors.toSet()))
+                        .describedAs("All spans should have same trace ID %s, spans %s", traceId, spans)
+                        .isEmpty();
+            }
+        } finally {
+            super.tearDown();
         }
     }
 
-    @Override
-    protected KeyValueService getKeyValueService() {
-        return TracingKeyValueService.create(new InMemoryKeyValueService(false));
-    }
 
     private static class TestSpanObserver implements SpanObserver {
         final List<Span> spans = new ArrayList<>();
